@@ -1,4 +1,7 @@
 ## Hi there 👋
-🌱South China Normal University 25' -- South China Normal University 29'
 
-💬Education in Science and Technology, society
+🎓 South China Normal University 25' -- South China Normal University 29'
+
+
+💬 Learning Sciences, Technology and Education.
+🌱 Interested in large language models and education policy.
