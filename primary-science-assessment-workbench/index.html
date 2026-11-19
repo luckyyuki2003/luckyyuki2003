@@ -303,6 +303,7 @@ html{scroll-padding-top:96px}
   #an-result .card,#an-result{display:block!important}
 }
 </style>
+<link rel="stylesheet" href="workspace.css">
 </head>
 <body data-page-node-id="pUjqfkY7klg4wNkZW0dv5K">
 <div data-page-node-id="mwf9W7xFrDhppuweUIYFUr" class="toast" id="toast"></div>
@@ -1654,6 +1655,7 @@ D. 发光
 
   /* ================= 持久化 ================= */
   var PROJ_KEY = "wb_proj_v3";
+  var BUILTIN_ITEMS = JSON.parse(JSON.stringify(BANK.items));
   var EXTRA_KEY = "wb_bank_extra_v3";
   var CURVOL = "4A";
   var BD = newBd(), PLAN = newPlan(), ANALYSIS = null;
@@ -1683,7 +1685,8 @@ D. 发光
         analysis: (ANALYSIS && ANALYSIS.items && ANALYSIS.items.length) ? { items: ANALYSIS.items } : null
       });
       var f = $("#saveflag");
-      if (f) { f.textContent = ok ? "已自动保存" : "自动保存失败（存储空间不足）"; f.className = "saveflag" + (ok ? "" : " warn"); }
+      window.dispatchEvent(new Event("wb:changed"));
+      if (f) { f.textContent = ok ? "已保存到本机" : "自动保存失败（存储空间不足）"; f.className = "saveflag" + (ok ? "" : " warn"); }
     }, 500);
   }
 
@@ -1776,7 +1779,7 @@ D. 发光
     var arr = safeGet(EXTRA_KEY);
     return Array.isArray(arr) ? arr : [];
   }
-  function saveExtra(list) { safeSet(EXTRA_KEY, list); }
+  function saveExtra(list) { if (!safeSet(EXTRA_KEY, list)) toast("题库保存失败，请导出备份。", "warn"); window.dispatchEvent(new Event("wb:changed")); }
   (function mergeExtra() {
     var extra = loadExtra();
     if (extra.length) BANK.items = BANK.items.concat(migratePoints(extra));
@@ -4787,7 +4790,7 @@ D. 发光
 
   /* ================= 工程文件 ================= */
   on("#btn-proj-export", "click", function () {
-    var data = { v: 3, exported: new Date().toISOString(), vol: CURVOL, paper: $("#paper").value, plan: PLAN, bd: BD };
+    var data = window.__WBWorkspace.capture(); data.exported = new Date().toISOString();
     var blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     var url = URL.createObjectURL(blob);
     var a = document.createElement("a");
@@ -4804,6 +4807,10 @@ D. 发光
     fr.onload = function () {
       try {
         var d = JSON.parse(fr.result);
+        if (d.v === 5 && Array.isArray(d.extra)) {
+          var scope = PROJ_KEY.indexOf("wb_proj_user_") === 0 ? PROJ_KEY.slice(13) : "guest";
+          window.__WBWorkspace.apply(d, scope); saveSoon(); toast("已导入完整工程。", "ok"); return;
+        }
         if (d.vol) CURVOL = d.vol;
         if (typeof d.paper === "string") $("#paper").value = d.paper;
         if (d.plan) PLAN = Object.assign(newPlan(), d.plan, { res: null });
@@ -4891,6 +4898,27 @@ D. 发光
   bindCovRows();
   boot();
 
+  
+  window.__WBWorkspace = {
+    capture: function () { return JSON.parse(JSON.stringify({v:5,vol:CURVOL,paper:$("#paper").value,plan:PLAN,bd:BD,analysis:ANALYSIS ? {items:ANALYSIS.items} : null,extra:loadExtra(),withAnswer:$("#with-answer").checked})); },
+    blank: function () { return {v:5,vol:CURVOL,paper:"",plan:newPlan(),bd:newBd(),analysis:null,extra:[],withAnswer:true}; },
+    apply: function (data, scope) {
+      if (!data || data.v !== 5 || typeof data.paper !== "string" || !VOLS.some(function(v){return v.code===data.vol;}) || !Array.isArray(data.extra || [])) throw Error("工程数据格式不正确。");
+      clearTimeout(saveTimer);
+      PROJ_KEY = scope === "guest" ? "wb_proj_v3" : "wb_proj_user_" + scope;
+      EXTRA_KEY = scope === "guest" ? "wb_bank_extra_v3" : "wb_bank_user_" + scope;
+      if (!safeSet(PROJ_KEY,data) || !safeSet(EXTRA_KEY,data.extra || [])) throw Error("本机空间不足，请导出备份后重试。");
+      BANK.items = JSON.parse(JSON.stringify(BUILTIN_ITEMS)).concat(data.extra || []);
+      CURVOL=data.vol; ANALYSIS=null; CELL={p:null,lv:null}; $("#paper").value=""; $("#req").value="";
+      $("#cur-vol").innerHTML=""; $("#with-answer").checked=data.withAnswer !== false;
+      CURRENT.bd=null; CURRENT.pl=null; $("#bd-paper").innerHTML=""; $("#pl-paper").innerHTML="";
+      $("#bd-out").classList.add("hidden"); $("#pl-out").classList.add("hidden");
+      boot();
+      if (data.bd && data.bd.res) { BD.res=data.bd.res; CURRENT.bd=BD.res; $("#bd-out").classList.remove("hidden"); bdRenderAll(); }
+      if (data.plan && data.plan.res) { PLAN.res=data.plan.res; CURRENT.pl=PLAN.res; $("#pl-out").classList.remove("hidden"); $("#pl-paper").innerHTML=paperHtmlInline(PLAN.res); renderPlFive(); renderPlDefect(); }
+    }
+  };
+
   window.__WB__ = { export: doExport };
   $$(".exp-w").forEach(function (b) {
     b.addEventListener("click", function () { PRINT_WHICH = b.dataset.w || "bd"; doExport("docx", PRINT_WHICH); });
@@ -4900,5 +4928,7 @@ D. 发光
   });
 })();
 </script>
+<script src="cloud-config.js"></script>
+<script src="workspace.js"></script>
 </body>
 </html>
